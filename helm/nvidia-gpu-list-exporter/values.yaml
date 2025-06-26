@@ -1,0 +1,156 @@
+# Default values for nvidia-gpu-list-exporter
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global namespace override (useful for multi-namespace deployments)
+namespaceOverride: ""
+
+# Name overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# HTTP server configuration
+host: "0.0.0.0"
+port: 8080
+
+# Image configuration
+image:
+  repository: nvidia-gpu-list-exporter
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Service account
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Pod annotations (additional annotations can be added here)
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext: {}
+
+# Security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  capabilities:
+    drop:
+    - ALL
+
+# Service configuration
+service:
+  type: ClusterIP
+  targetPort: metrics
+  annotations: {}
+
+# Exporter configuration
+exporter:
+  # Log level
+  logLevel: info
+  # Metrics update interval in seconds
+  interval: 15
+  # NVIDIA SMI timeout
+  timeout: 10s
+  # NVIDIA SMI path (leave empty for default)
+  nvidiaSmiPath: ""
+  # Hostname override (leave empty for auto-detection)
+  hostnameOverride: ""
+
+# Resources
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector
+nodeSelector: {}
+  # Example: Deploy only to GPU nodes
+  # nvidia.com/gpu.present: "true"
+
+# Tolerations
+tolerations: {}
+  # Example: Tolerate GPU node taints
+  # - key: nvidia.com/gpu
+  #   operator: Exists
+  #   effect: NoSchedule
+
+# Affinity
+affinity: {}
+  # Example: Prefer GPU nodes
+  # nodeAffinity:
+  #   preferredDuringSchedulingIgnoredDuringExecution:
+  #   - weight: 100
+  #     preference:
+  #       matchExpressions:
+  #       - key: accelerator
+  #         operator: Exists
+
+# Prometheus monitoring
+monitoring:
+  # Enable ServiceMonitor creation for Prometheus Operator
+  serviceMonitor:
+    enabled: true
+    # Additional labels for ServiceMonitor
+    additionalLabels: {}
+    # Scrape interval
+    interval: 30s
+    # Scrape timeout
+    scrapeTimeout: 10s
+    # Metrics path
+    path: /metrics
+    # Honor labels
+    honorLabels: true
+
+# DaemonSet update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# Host network access (for nvidia-smi)
+hostNetwork: false
+hostPID: false
+
+# Health checks
+healthCheck:
+  enabled: true
+  path: /health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+# Environment variables
+env: []
+  # - name: CUSTOM_ENV
+  #   value: "custom_value"
+
+# Extra volumes
+extraVolumes: []
+  # - name: custom-volume
+  #   configMap:
+  #     name: custom-config
+
+# Extra volume mounts
+extraVolumeMounts: []
+  # - name: custom-volume
+  #   mountPath: /etc/custom
+
+# Priority class name
+priorityClassName: "" 

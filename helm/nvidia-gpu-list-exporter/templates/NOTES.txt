@@ -1,0 +1,82 @@
+Thank you for installing {{ .Chart.Name }} v{{ .Chart.Version }}!
+
+The NVIDIA GPU List Exporter has been deployed as a DaemonSet to monitor GPU resources across your cluster.
+
+=== QUICK START ===
+
+1. Check DaemonSet status:
+   kubectl get daemonset --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} {{ include "nvidia-gpu-list-exporter.fullname" . }}
+
+2. View running pods (one per GPU node):
+   kubectl get pods --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} -l "{{ include "nvidia-gpu-list-exporter.selectorLabels" . }}"
+
+3. Check logs from a specific pod:
+   kubectl logs --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} -l "{{ include "nvidia-gpu-list-exporter.selectorLabels" . }}" --tail=50
+
+=== ACCESS METRICS ===
+
+{{- if contains "ClusterIP" .Values.service.type }}
+4. Access metrics via port-forward:
+   export POD_NAME=$(kubectl get pods --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} -l "{{ include "nvidia-gpu-list-exporter.selectorLabels" . }}" -o jsonpath="{.items[0].metadata.name}")
+   kubectl --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} port-forward $POD_NAME {{ .Values.port }}:{{ .Values.port }}
+   
+   Then visit: http://127.0.0.1:{{ .Values.port }}/metrics
+{{- else if contains "NodePort" .Values.service.type }}
+4. Access via NodePort:
+   export NODE_PORT=$(kubectl get --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "nvidia-gpu-list-exporter.fullname" . }})
+   export NODE_IP=$(kubectl get nodes --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} -o jsonpath="{.items[0].status.addresses[0].address}")
+   echo "Metrics URL: http://$NODE_IP:$NODE_PORT/metrics"
+{{- end }}
+
+5. Check health endpoint:
+   curl http://127.0.0.1:{{ .Values.port }}/health
+
+6. View GPU-specific metrics:
+   curl http://127.0.0.1:{{ .Values.port }}/metrics | grep "nvidia_gpu"
+
+=== PROMETHEUS INTEGRATION ===
+
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+7. ServiceMonitor is enabled and configured
+   - Scrape interval: {{ .Values.monitoring.serviceMonitor.interval }}
+   - Scrape timeout: {{ .Values.monitoring.serviceMonitor.scrapeTimeout }}
+   - Metrics path: {{ .Values.monitoring.serviceMonitor.path }}
+   
+   Your Prometheus Operator should automatically discover and scrape these metrics.
+{{- else }}
+7. ServiceMonitor is disabled
+   To enable automatic Prometheus scraping:
+   helm upgrade {{ .Release.Name }} {{ .Chart.Name }} --set monitoring.serviceMonitor.enabled=true
+{{- end }}
+
+=== TROUBLESHOOTING ===
+
+8. If no metrics are collected, check:
+   - GPU nodes have NVIDIA drivers installed
+   - nvidia-smi command is available in containers
+   - Pod tolerate GPU node taints (see values.yaml)
+
+9. Monitor exporter performance:
+   kubectl top pods --namespace {{ include "nvidia-gpu-list-exporter.namespace" . }} -l "{{ include "nvidia-gpu-list-exporter.selectorLabels" . }}"
+
+=== CONFIGURATION ===
+
+Current settings:
+- Host: {{ .Values.host }}
+- Port: {{ .Values.port }}
+- Log level: {{ .Values.exporter.logLevel }}
+- Update interval: {{ .Values.exporter.interval }} seconds
+- Timeout: {{ .Values.exporter.timeout }}
+- Host network: {{ .Values.hostNetwork }}
+{{- if .Values.exporter.nvidiaSmiPath }}
+- Custom nvidia-smi path: {{ .Values.exporter.nvidiaSmiPath }}
+{{- end }}
+{{- if .Values.exporter.hostnameOverride }}
+- Hostname override: {{ .Values.exporter.hostnameOverride }}
+{{- end }}
+{{- if .Values.namespaceOverride }}
+- Namespace override: {{ .Values.namespaceOverride }}
+{{- end }}
+
+For more information and documentation:
+{{ .Chart.Home }} 
