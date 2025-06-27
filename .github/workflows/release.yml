@@ -102,10 +102,24 @@ jobs:
           VERSION=${TAG_NAME#v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Update Chart version
+      - name: Verify Chart version consistency
         run: |
-          sed -i "s/version: .*/version: ${{ steps.get_version.outputs.version }}/" ./helm/nvidia-gpu-list-exporter/Chart.yaml
-          sed -i "s/appVersion: .*/appVersion: ${{ steps.get_version.outputs.version }}/" ./helm/nvidia-gpu-list-exporter/Chart.yaml
+          CHART_VERSION=$(grep "version:" ./helm/nvidia-gpu-list-exporter/Chart.yaml | awk '{print $2}')
+          CHART_APP_VERSION=$(grep "appVersion:" ./helm/nvidia-gpu-list-exporter/Chart.yaml | awk '{print $2}' | tr -d '"')
+          
+          echo "Verifying version consistency..."
+          echo "  Release version: ${{ steps.get_version.outputs.version }}"
+          echo "  Chart version: $CHART_VERSION"
+          echo "  Chart appVersion: $CHART_APP_VERSION"
+          
+          if [ "$CHART_VERSION" != "${{ steps.get_version.outputs.version }}" ] || [ "$CHART_APP_VERSION" != "${{ steps.get_version.outputs.version }}" ]; then
+            echo "ERROR: Version mismatch detected!"
+            echo "Please use the release script: ./scripts/release.sh ${{ steps.get_version.outputs.version }}"
+            echo "   This ensures all versions are synchronized before pushing the tag."
+            exit 1
+          fi
+          
+          echo "All versions are consistent!"
 
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.6.0
