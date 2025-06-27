@@ -24,7 +24,7 @@ A Prometheus exporter for NVIDIA GPU metrics that provides comprehensive monitor
 
 ### Binary Release
 
-Download the latest binary from the [releases page](https://github.com/your-repo/nvidia-gpu-list-exporter/releases).
+Download the latest binary from the [releases page](https://github.com/V01d42/nvidia-gpu-list-exporter/releases).
 
 ### Building from Source
 
@@ -37,7 +37,11 @@ go build -o exporter ./cmd/exporter
 ### Docker
 
 ```bash
-docker pull your-registry/nvidia-gpu-list-exporter:latest
+# Latest version
+docker pull ghcr.io/v01d42/nvidia-gpu-list-exporter:latest
+
+# Specific version
+docker pull ghcr.io/v01d42/nvidia-gpu-list-exporter:1.0.0
 ```
 
 ## Usage
@@ -63,7 +67,7 @@ docker run -d \
   --name gpu-exporter \
   --gpus all \
   -p 8080:8080 \
-  your-registry/nvidia-gpu-list-exporter:latest
+  ghcr.io/v01d42/nvidia-gpu-list-exporter:latest
 
 # With custom configuration
 docker run -d \
@@ -72,7 +76,7 @@ docker run -d \
   -p 8080:8080 \
   -e EXPORTER_PORT=8080 \
   -e EXPORTER_INTERVAL=30 \
-  your-registry/nvidia-gpu-list-exporter:latest
+  ghcr.io/v01d42/nvidia-gpu-list-exporter:latest
 ```
 
 ## Configuration
@@ -130,15 +134,20 @@ The exporter provides the following Prometheus metrics:
 ### Labels
 
 All metrics include the following labels:
-- `hostname`: System hostname
-- `gpu_id`: GPU identifier
-- `gpu_uuid`: GPU UUID
-- `gpu_name`: GPU model name
+- `hostname`: System hostname or override value
+- `gpu_id`: GPU identifier in format `{hostname}-{gpu_index}`
+- `gpu_uuid`: GPU UUID in format `GPU-{gpu_id}`
+- `gpu_name`: GPU model name (e.g., "NVIDIA GeForce RTX 4090")
 
 Process metrics include additional labels:
 - `pid`: Process ID
-- `user`: Process owner
-- `command`: Process command
+- `user`: Process owner username
+- `command`: Process command/executable name
+
+System metrics include additional labels:
+- `boot_image_version`: System boot image version
+- `os_version`: Operating system version
+- `kernel_version`: Kernel version
 
 ## Endpoints
 
@@ -163,14 +172,26 @@ Process metrics include additional labels:
 Deploy using the provided Helm chart for production environments:
 
 ```bash
-# Install from local chart
+# 1. Add the Helm repository (after first release)
+helm repo add nvidia-gpu-exporter https://V01d42.github.io/nvidia-gpu-list-exporter
+helm repo update
+
+# 2. Install from repository
+helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter
+
+# 3. Install from local chart (development)
 helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter
 
-# With custom values
-helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter \
-  --set image.tag=latest \
+# 4. Install with custom configuration
+helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter \
+  --set image.tag=1.0.0 \
   --set exporter.interval=30 \
-  --set monitoring.serviceMonitor.enabled=true
+  --set monitoring.serviceMonitor.enabled=true \
+  --namespace monitoring --create-namespace
+
+# 5. Install with custom values file
+helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter \
+  -f custom-values.yaml
 ```
 
 See the [Helm Chart README](./helm/nvidia-gpu-list-exporter/README.md) for detailed configuration options.
@@ -227,17 +248,29 @@ Import the provided Grafana dashboard or create custom visualizations using the 
 ### PromQL Examples
 
 ```promql
-# Average GPU temperature
+# Average GPU temperature across all GPUs
 avg(nvidia_gpu_temperature_celsius)
 
-# GPU memory utilization percentage
+# GPU memory utilization percentage by GPU
 (nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes) * 100
 
-# Top GPU processes by memory usage
+# Top 10 GPU processes by memory usage
 topk(10, nvidia_gpu_process_memory_bytes)
 
-# GPU utilization over time
-rate(nvidia_gpu_utilization_percent[5m])
+# GPU utilization rate over time (5-minute window)
+avg_over_time(nvidia_gpu_utilization_percent[5m])
+
+# Total GPU processes count by hostname
+sum(nvidia_gpu_process_count) by (hostname)
+
+# GPU memory usage in GB
+nvidia_gpu_memory_used_bytes / 1024 / 1024 / 1024
+
+# Hot GPUs (temperature > 80°C)
+nvidia_gpu_temperature_celsius > 80
+
+# System information query
+nvidia_system_image_info
 ```
 
 ## Troubleshooting
@@ -307,22 +340,37 @@ go vet ./...
 ### Project Structure
 
 ```
-.
-├── cmd/exporter/          # Main application entry point
-├── internal/
-│   ├── collector/         # GPU metrics collection logic
-│   └── metrics/           # Prometheus metrics management
-├── pkg/
-│   ├── config/           # Configuration handling
-│   └── types/            # Data structures
-├── helm/                 # Kubernetes Helm chart
-│   └── nvidia-gpu-list-exporter/
-│       ├── templates/    # Kubernetes manifests
-│       ├── values.yaml   # Default configuration
-│       └── README.md     # Helm chart documentation
-├── Dockerfile            # Docker build configuration
-├── go.mod               # Go module definition
-└── README.md            # This file
+nvidia-gpu-list-exporter/
+├── cmd/exporter/                    # Main application entry point
+│   └── main.go                     # HTTP server, routing, signal handling
+├── internal/                       # Internal packages (cannot be imported externally)
+│   ├── collector/                  # GPU metrics collection logic
+│   │   └── collector.go            # nvidia-smi execution and parsing
+│   └── metrics/                    # Prometheus metrics management
+│       └── metrics.go              # Metric definitions and update logic
+├── pkg/                           # Public packages (can be imported)
+│   ├── config/                    # Configuration handling
+│   │   └── config.go              # CLI args and environment variable loading
+│   └── types/                     # Data structures
+│       └── gpu_metrics.go         # GPU, process, and system info structs
+├── helm/                          # Kubernetes deployment
+│   └── nvidia-gpu-list-exporter/  # Helm chart
+│       ├── templates/             # Kubernetes manifests
+│       │   ├── daemonset.yaml     # DaemonSet deployment
+│       │   ├── service.yaml       # Service definition
+│       │   ├── servicemonitor.yaml # Prometheus ServiceMonitor
+│       │   └── configmap.yaml     # Configuration
+│       ├── values.yaml            # Default chart values
+│       ├── Chart.yaml             # Chart metadata
+│       └── README.md              # Helm chart documentation
+├── .github/workflows/             # CI/CD automation
+│   └── release.yml               # Release workflow (Docker + Helm)
+├── docs/                         # Documentation
+│   └── CI_CD_SETUP.md           # CI/CD setup guide
+├── Dockerfile                    # Docker build configuration
+├── go.mod                       # Go module definition
+├── go.sum                       # Go module checksums
+└── README.md                    # Project documentation
 ```
 
 ## Contributing

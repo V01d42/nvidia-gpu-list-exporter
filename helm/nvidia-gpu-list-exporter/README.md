@@ -16,10 +16,33 @@ This chart deploys the NVIDIA GPU List Exporter to collect comprehensive GPU met
 
 ## Installation
 
-### Install from Local Chart
+### Install from Helm Repository (Recommended)
 
 ```bash
-# From the project root
+# 1. Add the official Helm repository
+helm repo add nvidia-gpu-exporter https://V01d42.github.io/nvidia-gpu-list-exporter
+helm repo update
+
+# 2. Install with default values
+helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter
+
+# 3. Install in specific namespace
+helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter \
+  --namespace monitoring --create-namespace
+
+# 4. Install with specific version
+helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter \
+  --version 1.0.0
+
+# 5. Verify installation
+helm list
+kubectl get pods -l app.kubernetes.io/name=nvidia-gpu-list-exporter
+```
+
+### Install from Local Chart (Development)
+
+```bash
+# From the project root directory
 helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter
 
 # Install with custom namespace
