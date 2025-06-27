@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     ./cmd/exporter
 
 # Runtime stage
-FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:12.9.1-base-ubuntu24.04
 
 # Set labels
 LABEL maintainer="nvidia-gpu-list-exporter"
