@@ -156,9 +156,56 @@ Process metrics include additional labels:
 }
 ```
 
+## Deployment
+
+### Kubernetes with Helm (Recommended)
+
+Deploy using the provided Helm chart for production environments:
+
+```bash
+# Install from local chart
+helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter
+
+# With custom values
+helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter \
+  --set image.tag=latest \
+  --set exporter.interval=30 \
+  --set monitoring.serviceMonitor.enabled=true
+```
+
+See the [Helm Chart README](./helm/nvidia-gpu-list-exporter/README.md) for detailed configuration options.
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  nvidia-gpu-exporter:
+    build: .
+    ports:
+      - "8080:8080"
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+```
+
 ## Monitoring Setup
 
-### Prometheus Configuration
+### Kubernetes with Prometheus Operator
+
+When using the Helm chart with Prometheus Operator:
+
+```yaml
+# values.yaml
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    additionalLabels:
+      release: prometheus-operator
+```
+
+### Manual Prometheus Configuration
 
 Add the following to your `prometheus.yml`:
 
@@ -268,6 +315,11 @@ go vet ./...
 ├── pkg/
 │   ├── config/           # Configuration handling
 │   └── types/            # Data structures
+├── helm/                 # Kubernetes Helm chart
+│   └── nvidia-gpu-list-exporter/
+│       ├── templates/    # Kubernetes manifests
+│       ├── values.yaml   # Default configuration
+│       └── README.md     # Helm chart documentation
 ├── Dockerfile            # Docker build configuration
 ├── go.mod               # Go module definition
 └── README.md            # This file
