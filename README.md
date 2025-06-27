@@ -173,24 +173,24 @@ Deploy using the provided Helm chart for production environments:
 
 ```bash
 # 1. Add the Helm repository (after first release)
-helm repo add nvidia-gpu-exporter https://V01d42.github.io/nvidia-gpu-list-exporter
+helm repo add nvidia-gpu-list-exporter https://V01d42.github.io/nvidia-gpu-list-exporter
 helm repo update
 
 # 2. Install from repository
-helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter
+helm install nvidia-gpu-list-exporter nvidia-gpu-list-exporter/nvidia-gpu-list-exporter
 
 # 3. Install from local chart (development)
-helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter
+helm install nvidia-gpu-list-exporter ./helm/nvidia-gpu-list-exporter
 
 # 4. Install with custom configuration
-helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter \
+helm install nvidia-gpu-list-exporter nvidia-gpu-list-exporter/nvidia-gpu-list-exporter \
   --set image.tag=1.0.0 \
   --set exporter.interval=30 \
   --set monitoring.serviceMonitor.enabled=true \
   --namespace monitoring --create-namespace
 
 # 5. Install with custom values file
-helm install nvidia-gpu-exporter nvidia-gpu-exporter/nvidia-gpu-list-exporter \
+helm install nvidia-gpu-list-exporter nvidia-gpu-list-exporter/nvidia-gpu-list-exporter \
   -f custom-values.yaml
 ```
 
@@ -201,7 +201,7 @@ See the [Helm Chart README](./helm/nvidia-gpu-list-exporter/README.md) for detai
 ```yaml
 version: '3.8'
 services:
-  nvidia-gpu-exporter:
+  nvidia-gpu-list-exporter:
     build: .
     ports:
       - "8080:8080"
@@ -232,7 +232,7 @@ Add the following to your `prometheus.yml`:
 
 ```yaml
 scrape_configs:
-  - job_name: 'nvidia-gpu-exporter'
+  - job_name: 'nvidia-gpu-list-exporter'
     static_configs:
       - targets: ['localhost:8080']
     scrape_interval: 15s
@@ -307,7 +307,7 @@ Enable verbose logging by checking the application logs:
 ./exporter 2>&1 | tee exporter.log
 
 # Docker logs
-docker logs nvidia-gpu-exporter
+docker logs nvidia-gpu-list-exporter
 ```
 
 ## Development
