@@ -67,14 +67,6 @@ func main() {
 				log.Printf("Process information updated: %d items", len(processes))
 			}
 
-			systemInfo, err := gpuCollector.CollectSystemInfo()
-			if err != nil {
-				log.Printf("Failed to collect system information: %v", err)
-			} else {
-				promMetrics.UpdateSystemInfo(systemInfo)
-				log.Printf("System information updated: %s", systemInfo.BootImageVersion)
-			}
-
 			<-ticker.C
 		}
 	}()

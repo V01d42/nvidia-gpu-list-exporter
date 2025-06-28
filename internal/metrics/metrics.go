@@ -2,8 +2,7 @@
 package metrics
 
 import (
-	"fmt"
-	"strings"
+	"strconv"
 
 	"github.com/nvidia-gpu-list-exporter/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -12,91 +11,92 @@ import (
 // Metrics represents a collection of Prometheus metrics for GPU monitoring.
 type Metrics struct {
 	gpuTemperature    *prometheus.GaugeVec
-	gpuMemoryFree     *prometheus.GaugeVec
-	gpuMemoryUsed     *prometheus.GaugeVec
-	gpuMemoryTotal    *prometheus.GaugeVec
+	gpuFreeMemory     *prometheus.GaugeVec
+	gpuUsedMemory     *prometheus.GaugeVec
+	gpuTotalMemory    *prometheus.GaugeVec
 	gpuUtilization    *prometheus.GaugeVec
 	memoryUtilization *prometheus.GaugeVec
-	gpuProcessMemory  *prometheus.GaugeVec
-	gpuProcessCount   *prometheus.GaugeVec
-	systemImageInfo   *prometheus.GaugeVec
+	processGPUMemory  *prometheus.GaugeVec
+	processCPU        *prometheus.GaugeVec
+	processMemory     *prometheus.GaugeVec
 }
 
 // New creates a new Prometheus metrics collection.
 func New() *Metrics {
-	commonLabels := []string{"hostname", "gpu_id", "gpu_uuid", "gpu_name"}
+	gpuLabels := []string{"hostname", "gpu_id", "gpu_name"}
+	processLabels := []string{"hostname", "gpu_id", "pid", "process_name", "user", "command"}
 
 	return &Metrics{
 		gpuTemperature: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "nvidia_gpu_temperature_celsius",
-				Help: "GPU temperature in Celsius (DCGM_FI_DEV_GPU_TEMP)",
+				Help: "GPU temperature in Celsius",
 			},
-			commonLabels,
+			gpuLabels,
 		),
 
-		gpuMemoryFree: prometheus.NewGaugeVec(
+		gpuFreeMemory: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "nvidia_gpu_memory_free_bytes",
-				Help: "GPU free memory in bytes (DCGM_FI_DEV_FB_FREE)",
+				Name: "nvidia_gpu_free_memory_bytes",
+				Help: "GPU free memory in bytes",
 			},
-			commonLabels,
+			gpuLabels,
 		),
 
-		gpuMemoryUsed: prometheus.NewGaugeVec(
+		gpuUsedMemory: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "nvidia_gpu_memory_used_bytes",
-				Help: "GPU used memory in bytes (DCGM_FI_DEV_FB_USED)",
+				Name: "nvidia_gpu_used_memory_bytes",
+				Help: "GPU used memory in bytes",
 			},
-			commonLabels,
+			gpuLabels,
 		),
 
-		gpuMemoryTotal: prometheus.NewGaugeVec(
+		gpuTotalMemory: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "nvidia_gpu_memory_total_bytes",
+				Name: "nvidia_gpu_total_memory_bytes",
 				Help: "GPU total memory in bytes",
 			},
-			commonLabels,
+			gpuLabels,
 		),
 
 		gpuUtilization: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "nvidia_gpu_utilization_percent",
-				Help: "GPU utilization percentage (DCGM_FI_DEV_GPU_UTIL)",
+				Help: "GPU utilization percentage",
 			},
-			commonLabels,
+			gpuLabels,
 		),
 
 		memoryUtilization: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "nvidia_gpu_memory_utilization_percent",
-				Help: "GPU memory utilization percentage (DCGM_FI_DEV_MEM_COPY_UTIL)",
+				Help: "GPU memory utilization percentage",
 			},
-			commonLabels,
+			gpuLabels,
 		),
 
-		gpuProcessMemory: prometheus.NewGaugeVec(
+		processGPUMemory: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "nvidia_gpu_process_memory_bytes",
+				Name: "nvidia_gpu_process_gpu_memory_bytes",
 				Help: "GPU process memory usage in bytes",
 			},
-			append(commonLabels, "pid", "user", "command"),
+			processLabels,
 		),
 
-		gpuProcessCount: prometheus.NewGaugeVec(
+		processCPU: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "nvidia_gpu_process_count",
-				Help: "Number of GPU processes",
+				Name: "nvidia_gpu_process_cpu_percent",
+				Help: "GPU process CPU usage percentage",
 			},
-			commonLabels,
+			processLabels,
 		),
 
-		systemImageInfo: prometheus.NewGaugeVec(
+		processMemory: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "nvidia_system_image_info",
-				Help: "System image information (Image Info) - value is always 1",
+				Name: "nvidia_gpu_process_memory_percent",
+				Help: "GPU process memory usage percentage",
 			},
-			[]string{"hostname", "boot_image_version", "os_version", "kernel_version"},
+			processLabels,
 		),
 	}
 }
@@ -105,14 +105,14 @@ func New() *Metrics {
 func (m *Metrics) Register(registry prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
 		m.gpuTemperature,
-		m.gpuMemoryFree,
-		m.gpuMemoryUsed,
-		m.gpuMemoryTotal,
+		m.gpuFreeMemory,
+		m.gpuUsedMemory,
+		m.gpuTotalMemory,
 		m.gpuUtilization,
 		m.memoryUtilization,
-		m.gpuProcessMemory,
-		m.gpuProcessCount,
-		m.systemImageInfo,
+		m.processGPUMemory,
+		m.processCPU,
+		m.processMemory,
 	}
 
 	for _, collector := range collectors {
@@ -127,24 +127,16 @@ func (m *Metrics) Register(registry prometheus.Registerer) error {
 // UpdateGPU updates GPU metrics with the provided data.
 func (m *Metrics) UpdateGPU(gpuMetrics []types.GPUMetrics) {
 	for _, metric := range gpuMetrics {
-		gpuName := metric.GPUName
-		if gpuName == "" {
-			gpuName = "unknown"
-		}
-
-		gpuUUID := fmt.Sprintf("GPU-%s", metric.GPUID)
-
 		labels := prometheus.Labels{
 			"hostname": metric.Hostname,
-			"gpu_id":   metric.GPUID,
-			"gpu_uuid": gpuUUID,
-			"gpu_name": gpuName,
+			"gpu_id":   strconv.Itoa(metric.GPUID),
+			"gpu_name": metric.GPUName,
 		}
 
 		m.gpuTemperature.With(labels).Set(metric.Temperature)
-		m.gpuMemoryFree.With(labels).Set(float64(metric.MemoryFree * 1024 * 1024))
-		m.gpuMemoryUsed.With(labels).Set(float64(metric.MemoryUsed * 1024 * 1024))
-		m.gpuMemoryTotal.With(labels).Set(float64(metric.MemoryTotal * 1024 * 1024))
+		m.gpuFreeMemory.With(labels).Set(float64(metric.FreeMemory * 1024 * 1024))
+		m.gpuUsedMemory.With(labels).Set(float64(metric.UsedMemory * 1024 * 1024))
+		m.gpuTotalMemory.With(labels).Set(float64(metric.TotalMemory * 1024 * 1024))
 		m.gpuUtilization.With(labels).Set(metric.GPUUtilization)
 		m.memoryUtilization.With(labels).Set(metric.MemoryUtilization)
 	}
@@ -152,49 +144,18 @@ func (m *Metrics) UpdateGPU(gpuMetrics []types.GPUMetrics) {
 
 // UpdateProcesses updates GPU process metrics.
 func (m *Metrics) UpdateProcesses(processes []types.GPUProcess) {
-	processCountByGPU := make(map[string]int)
-
 	for _, process := range processes {
-		gpuUUID := fmt.Sprintf("GPU-%s", process.GPUID)
-		gpuName := "unknown"
-
-		processCountByGPU[process.GPUID]++
-		processMemoryLabels := prometheus.Labels{
-			"hostname": process.Hostname,
-			"gpu_id":   process.GPUID,
-			"gpu_uuid": gpuUUID,
-			"gpu_name": gpuName,
-			"pid":      fmt.Sprintf("%d", process.PID),
-			"user":     process.User,
-			"command":  process.ProcessName,
-		}
-		m.gpuProcessMemory.With(processMemoryLabels).Set(float64(process.UsedGPUMemory * 1024 * 1024))
-	}
-
-	for gpuID, count := range processCountByGPU {
-		hostname := "unknown"
-		if parts := strings.Split(gpuID, "-"); len(parts) >= 2 {
-			hostname = strings.Join(parts[:len(parts)-1], "-")
+		labels := prometheus.Labels{
+			"hostname":     process.Hostname,
+			"gpu_id":       strconv.Itoa(process.GPUID),
+			"pid":          strconv.Itoa(process.PID),
+			"process_name": process.ProcessName,
+			"user":         process.User,
+			"command":      process.Command,
 		}
 
-		processCountLabels := prometheus.Labels{
-			"hostname": hostname,
-			"gpu_id":   gpuID,
-			"gpu_uuid": fmt.Sprintf("GPU-%s", gpuID),
-			"gpu_name": "unknown",
-		}
-		m.gpuProcessCount.With(processCountLabels).Set(float64(count))
+		m.processGPUMemory.With(labels).Set(float64(process.UsedGPUMemory * 1024 * 1024))
+		m.processCPU.With(labels).Set(process.UsedCPU)
+		m.processMemory.With(labels).Set(process.UsedMemory)
 	}
-}
-
-// UpdateSystemInfo updates system information metrics.
-func (m *Metrics) UpdateSystemInfo(systemInfo types.SystemImageInfo) {
-	labels := prometheus.Labels{
-		"hostname":           systemInfo.Hostname,
-		"boot_image_version": systemInfo.BootImageVersion,
-		"os_version":         systemInfo.OSVersion,
-		"kernel_version":     systemInfo.KernelVersion,
-	}
-
-	m.systemImageInfo.With(labels).Set(1)
 }

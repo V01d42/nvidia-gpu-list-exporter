@@ -27,6 +27,12 @@ func New(config types.CollectorConfig) (*Collector, error) {
 		return nil, fmt.Errorf("failed to get hostname: %w", err)
 	}
 
+	// Check for NODE_NAME environment variable (Kubernetes)
+	if nodeName := os.Getenv("NODE_NAME"); nodeName != "" {
+		hostname = nodeName
+	}
+
+	// Check for explicit hostname override
 	if config.HostnameOverride != "" {
 		hostname = config.HostnameOverride
 	}
@@ -102,20 +108,28 @@ func (c *Collector) parseGPUMetrics(output string) ([]types.GPUMetrics, error) {
 			timestamp = time.Now()
 		}
 
-		gpuIndex := strings.TrimSpace(record[1])
+		gpuIndexStr := strings.TrimSpace(record[1])
+		gpuIndex, err := strconv.Atoi(gpuIndexStr)
+		if err != nil {
+			continue
+		}
+
 		gpuName := strings.TrimSpace(record[2])
+		if gpuName == "" {
+			gpuName = "unknown"
+		}
 
-		memoryFree, err := c.parseUint64(record[3])
+		freeMemory, err := c.parseUint64(record[3])
 		if err != nil {
 			continue
 		}
 
-		memoryUsed, err := c.parseUint64(record[4])
+		usedMemory, err := c.parseUint64(record[4])
 		if err != nil {
 			continue
 		}
 
-		memoryTotal, err := c.parseUint64(record[5])
+		totalMemory, err := c.parseUint64(record[5])
 		if err != nil {
 			continue
 		}
@@ -137,13 +151,13 @@ func (c *Collector) parseGPUMetrics(output string) ([]types.GPUMetrics, error) {
 
 		metric := types.GPUMetrics{
 			Hostname:          c.hostname,
-			GPUID:             fmt.Sprintf("%s-%s", c.hostname, gpuIndex),
+			GPUID:             gpuIndex,
 			Timestamp:         timestamp,
 			GPUName:           gpuName,
 			Temperature:       temperature,
-			MemoryFree:        memoryFree,
-			MemoryUsed:        memoryUsed,
-			MemoryTotal:       memoryTotal,
+			FreeMemory:        freeMemory,
+			UsedMemory:        usedMemory,
+			TotalMemory:       totalMemory,
 			GPUUtilization:    gpuUtil,
 			MemoryUtilization: memUtil,
 		}
@@ -189,7 +203,7 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout*2)
 	defer cancel()
 
-	script := `nvidia-smi --query-compute-apps=timestamp,pid,process_name,used_gpu_memory --format=csv,noheader | grep -v 'Not Found' | while read s; do echo $s | sed -z 's/\n//'; echo $(ps --noheader -o 'user,%mem,%cpu,command' -p $(echo $s | awk 'BEGIN{FS=", "}{print $2}') | sed -e 's/,/./g' | awk '{printf(",%s,%s,%s, ",$1,$2,$3);for(i=4;i<NF;i++){printf("%s ",$i)}print $NF}'); done`
+	script := `nvidia-smi --query-compute-apps=timestamp,index,pid,process_name,used_gpu_memory --format=csv,noheader | grep -v 'Not Found' | while read s; do echo $s | sed -z 's/\n//'; echo $(ps --noheader -o 'user,%mem,%cpu,command' -p $(echo $s | awk 'BEGIN{FS=", "}{print $3}') | sed -e 's/,/./g' | awk '{printf(",%s,%s,%s, ",$1,$2,$3);for(i=4;i<NF;i++){printf("%s ",$i)}print $NF}'); done`
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", script)
 	output, err := cmd.Output()
@@ -207,7 +221,6 @@ func (c *Collector) parseProcesses(output string) ([]types.GPUProcess, error) {
 	}
 
 	processes := make([]types.GPUProcess, 0)
-	timestamp := time.Now()
 
 	for _, line := range lines {
 		if line == "" {
@@ -219,135 +232,62 @@ func (c *Collector) parseProcesses(output string) ([]types.GPUProcess, error) {
 			continue
 		}
 
-		pid, err := c.parseUint32(fields[1])
+		timestampStr := strings.TrimSpace(fields[0])
+		timestamp, err := time.Parse("2006/01/02 15:04:05.000", timestampStr)
+		if err != nil {
+			timestamp = time.Now()
+		}
+
+		gpuIDStr := strings.TrimSpace(fields[1])
+		gpuID, err := strconv.Atoi(gpuIDStr)
 		if err != nil {
 			continue
 		}
 
-		processName := strings.TrimSpace(fields[2])
+		pid, err := strconv.Atoi(fields[2])
+		if err != nil {
+			continue
+		}
+
+		processName := strings.TrimSpace(fields[3])
 		if processName == "" {
 			processName = "unknown"
 		}
 
-		usedMemory, err := c.parseUint64(fields[3])
+		usedGPUMemory, err := c.parseUint64(fields[4])
+		if err != nil {
+			continue
+		}
+
+		user := strings.TrimSpace(fields[5])
+		if user == "" {
+			user = "unknown"
+		}
+
+		usedMemory, err := c.parseFloat(fields[6])
+		if err != nil {
+			continue
+		}
+
+		usedCPU, err := c.parseFloat(fields[7])
 		if err != nil {
 			continue
 		}
 
 		process := types.GPUProcess{
 			Hostname:      c.hostname,
+			GPUID:         gpuID,
 			Timestamp:     timestamp,
-			GPUID:         fmt.Sprintf("%s-%d", c.hostname, pid),
+			User:          user,
 			PID:           pid,
 			ProcessName:   processName,
-			UsedGPUMemory: usedMemory,
-			User:          "unknown",
+			UsedGPUMemory: usedGPUMemory,
+			UsedCPU:       usedCPU,
+			UsedMemory:    usedMemory,
 			Command:       processName,
 		}
 		processes = append(processes, process)
 	}
 
 	return processes, nil
-}
-
-func (c *Collector) parseUint32(s string) (uint32, error) {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "N/A" || s == "[Not Supported]" {
-		return 0, fmt.Errorf("invalid value")
-	}
-	value, err := strconv.ParseUint(s, 10, 32)
-	return uint32(value), err
-}
-
-// CollectSystemInfo collects system information.
-func (c *Collector) CollectSystemInfo() (types.SystemImageInfo, error) {
-	timestamp := time.Now()
-
-	osVersion, err := c.getOSVersion()
-	if err != nil {
-		osVersion = "unknown"
-	}
-
-	kernelVersion, err := c.getKernelVersion()
-	if err != nil {
-		kernelVersion = "unknown"
-	}
-
-	bootImageVersion, err := c.getBootImageVersion()
-	if err != nil {
-		bootImageVersion = "unknown"
-	}
-
-	return types.SystemImageInfo{
-		Hostname:         c.hostname,
-		Timestamp:        timestamp,
-		BootImageVersion: bootImageVersion,
-		OSVersion:        osVersion,
-		KernelVersion:    kernelVersion,
-	}, nil
-}
-
-func (c *Collector) getOSVersion() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "lsb_release", "-d", "-s")
-	output, err := cmd.Output()
-	if err != nil {
-		return c.getOSVersionFromFile()
-	}
-
-	return strings.TrimSpace(string(output)), nil
-}
-
-func (c *Collector) getOSVersionFromFile() (string, error) {
-	content, err := os.ReadFile("/etc/os-release")
-	if err != nil {
-		return "", err
-	}
-
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "PRETTY_NAME=") {
-			value := strings.TrimPrefix(line, "PRETTY_NAME=")
-			value = strings.Trim(value, `"`)
-			return value, nil
-		}
-	}
-
-	return "", fmt.Errorf("OS information not found")
-}
-
-func (c *Collector) getKernelVersion() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "uname", "-r")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(output)), nil
-}
-
-func (c *Collector) getBootImageVersion() (string, error) {
-	content, err := os.ReadFile("/boot_image_version")
-	if err != nil {
-		if version := os.Getenv("IMAGE_VERSION"); version != "" {
-			return version, nil
-		}
-
-		osVersion, err := c.getOSVersion()
-		if err != nil {
-			return "unknown", nil
-		}
-		return osVersion, nil
-	}
-
-	version := strings.TrimSpace(string(content))
-	if version == "" {
-		return "unknown", nil
-	}
-	return version, nil
 }
