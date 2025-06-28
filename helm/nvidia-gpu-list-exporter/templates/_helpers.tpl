@@ -93,6 +93,10 @@ Generate environment variables for the exporter
   value: {{ .Values.exporter.interval | quote }}
 - name: EXPORTER_TIMEOUT
   value: {{ .Values.exporter.timeout | quote }}
+- name: NODE_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: spec.nodeName
 {{- if .Values.exporter.logLevel }}
 - name: LOG_LEVEL
   value: {{ .Values.exporter.logLevel | quote }}
