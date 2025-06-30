@@ -106,7 +106,8 @@ monitoring:
   serviceMonitor:
     enabled: true
     # Additional labels for ServiceMonitor
-    additionalLabels: {}
+    additionalLabels:
+      release: prometheus
     # Scrape interval
     interval: 30s
     # Scrape timeout
