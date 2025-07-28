@@ -41,13 +41,21 @@ podSecurityContext: {}
 # Security context
 securityContext:
   allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1000
   runAsGroup: 1000
+  # 新しい権限の取得を防止
+  seccompProfile:
+    type: RuntimeDefault
   capabilities:
+    add:
+      - SYS_PTRACE
     drop:
-    - ALL
+      - ALL
+      - KILL
+      - SYS_KILL
+      - SYS_ADMIN
 
 # Service configuration
 service:
@@ -125,7 +133,7 @@ updateStrategy:
 
 # Host network access (for nvidia-smi)
 hostNetwork: false
-hostPID: false
+hostPID: true
 
 # Health checks
 healthCheck:

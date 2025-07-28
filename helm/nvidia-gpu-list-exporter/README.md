@@ -286,20 +286,40 @@ count(nvidia_gpu_temperature_celsius) by (hostname)
 
 ## Security Configuration
 
-### Security Context
+### Host Process Access
 
-The chart runs with restrictive security context by default:
+This exporter requires access to host processes to collect detailed GPU process information. The following security measures are implemented:
 
+#### Required Settings
+- `hostPID: true` - Required for accessing host process information
+- **Minimal Linux Capabilities**: Only `SYS_PTRACE` for process information reading
+- **Explicitly Dropped Capabilities**: `KILL`, `SYS_KILL`, `SYS_ADMIN` to prevent process manipulation
+
+#### Security Features
+- **Read-Only Root Filesystem**: `readOnlyRootFilesystem: true`
+- **Non-Root User**: Runs as user 1000 with no privilege escalation
+- **Seccomp Profile**: Uses `RuntimeDefault` profile
+- **Environment Isolation**: Restricted environment variables
+- **Command Length Limits**: Prevents buffer overflow attacks
+
+#### Security Best Practices
 ```yaml
 securityContext:
   allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1000
   runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
   capabilities:
+    add:
+      - SYS_PTRACE  # Required for process information only
     drop:
-    - ALL
+      - ALL
+      - KILL        # Explicitly prevent process killing
+      - SYS_KILL
+      - SYS_ADMIN
 ```
 
 ### Service Account

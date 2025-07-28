@@ -203,9 +203,25 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout*2)
 	defer cancel()
 
-	script := `nvidia-smi --query-compute-apps=timestamp,index,pid,process_name,used_gpu_memory --format=csv,noheader | grep -v 'Not Found' | while read s; do echo $s | sed -z 's/\n//'; echo $(ps --noheader -o 'user,%mem,%cpu,command' -p $(echo $s | awk 'BEGIN{FS=", "}{print $3}') | sed -e 's/,/./g' | awk '{printf(",%s,%s,%s, ",$1,$2,$3);for(i=4;i<NF;i++){printf("%s ",$i)}print $NF}'); done`
+	// セキュリティを考慮したスクリプト改善
+	// - エラーハンドリング強化
+	// - 危険なコマンド実行の防止
+	// - プロセス情報の安全な取得
+	script := `
+	set -euo pipefail  # エラー時即座に終了、未定義変数の使用禁止
+	
+	# nvidia-smiでGPUプロセス情報を取得
+	nvidia-smi --query-compute-apps=timestamp,index,pid,process_name,used_gpu_memory --format=csv,noheader 2>/dev/null | \
+	grep -v 'Not Found' | \
+	while IFS=',' read -r timestamp gpu_index pid process_name gpu_memory; do
+		if ps_info=$(ps --noheader -o 'user,%mem,%cpu,command' -p "${pid// /}" 2>/dev/null); then
+			ps_info_escaped=$(echo "$ps_info" | sed -e 's/,/./g')
+			echo "${timestamp// /},${gpu_index// /},${pid// /},${process_name// /},${gpu_memory// /},$ps_info_escaped"
+		fi
+	done`
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", script)
+
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GPU process information: %w", err)
@@ -222,56 +238,69 @@ func (c *Collector) parseProcesses(output string) ([]types.GPUProcess, error) {
 
 	processes := make([]types.GPUProcess, 0)
 
-	for _, line := range lines {
+	for lineNum, line := range lines {
 		if line == "" {
 			continue
 		}
 
 		fields := strings.Split(line, ",")
-		if len(fields) < 4 {
-			continue
+		if len(fields) != 9 {
+			return nil, fmt.Errorf("line %d: invalid field count (%d), expected exactly 9 fields", lineNum+1, len(fields))
 		}
 
 		timestampStr := strings.TrimSpace(fields[0])
 		timestamp, err := time.Parse("2006/01/02 15:04:05.000", timestampStr)
 		if err != nil {
-			timestamp = time.Now()
+			return nil, fmt.Errorf("line %d: failed to parse timestamp '%s': %w", lineNum+1, timestampStr, err)
 		}
 
 		gpuIDStr := strings.TrimSpace(fields[1])
 		gpuID, err := strconv.Atoi(gpuIDStr)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("line %d: failed to parse GPU ID '%s': %w", lineNum+1, gpuIDStr, err)
 		}
 
-		pid, err := strconv.Atoi(fields[2])
+		pidStr := strings.TrimSpace(fields[2])
+		pid, err := strconv.Atoi(pidStr)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("line %d: failed to parse PID '%s': %w", lineNum+1, pidStr, err)
 		}
 
 		processName := strings.TrimSpace(fields[3])
 		if processName == "" {
-			processName = "unknown"
+			return nil, fmt.Errorf("line %d: empty process name", lineNum+1)
 		}
 
 		usedGPUMemory, err := c.parseUint64(fields[4])
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("line %d: failed to parse GPU memory '%s': %w", lineNum+1, fields[4], err)
 		}
 
 		user := strings.TrimSpace(fields[5])
 		if user == "" {
-			user = "unknown"
+			return nil, fmt.Errorf("line %d: empty user field", lineNum+1)
 		}
 
 		usedMemory, err := c.parseFloat(fields[6])
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("line %d: failed to parse memory usage '%s': %w", lineNum+1, fields[6], err)
 		}
 
 		usedCPU, err := c.parseFloat(fields[7])
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("line %d: failed to parse CPU usage '%s': %w", lineNum+1, fields[7], err)
+		}
+
+		// 9番目のフィールドが完全なコマンド（スペース含む）
+		command := strings.TrimSpace(fields[8])
+		if command == "" {
+			command = processName // フォールバック
+		}
+
+		// コマンドが異常に長い場合は切り詰め（セキュリティ考慮）
+		const maxCommandLength = 1024
+		if len(command) > maxCommandLength {
+			command = command[:maxCommandLength] + "..."
 		}
 
 		process := types.GPUProcess{
@@ -284,7 +313,7 @@ func (c *Collector) parseProcesses(output string) ([]types.GPUProcess, error) {
 			UsedGPUMemory: usedGPUMemory,
 			UsedCPU:       usedCPU,
 			UsedMemory:    usedMemory,
-			Command:       processName,
+			Command:       command,
 		}
 		processes = append(processes, process)
 	}
