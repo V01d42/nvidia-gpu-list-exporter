@@ -64,7 +64,11 @@ func main() {
 				log.Printf("Failed to collect process information: %v", err)
 			} else {
 				promMetrics.UpdateProcesses(processes)
-				log.Printf("Process information updated: %d items", len(processes))
+				if len(processes) == 0 {
+					log.Printf("Process information updated: no GPU processes running")
+				} else {
+					log.Printf("Process information updated: %d processes", len(processes))
+				}
 			}
 
 			<-ticker.C

@@ -203,20 +203,38 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout*2)
 	defer cancel()
 
-	// セキュリティを考慮したスクリプト改善
-	// - エラーハンドリング強化
-	// - 危険なコマンド実行の防止
-	// - プロセス情報の安全な取得
+	// get detailed process information
 	script := `
-	set -euo pipefail  # エラー時即座に終了、未定義変数の使用禁止
+	set -euo pipefail
 	
-	# nvidia-smiでGPUプロセス情報を取得
-	nvidia-smi --query-compute-apps=timestamp,index,pid,process_name,used_gpu_memory --format=csv,noheader 2>/dev/null | \
-	grep -v 'Not Found' | \
-	while IFS=',' read -r timestamp gpu_index pid process_name gpu_memory; do
-		if ps_info=$(ps --noheader -o 'user,%mem,%cpu,command' -p "${pid// /}" 2>/dev/null); then
-			ps_info_escaped=$(echo "$ps_info" | sed -e 's/,/./g')
-			echo "${timestamp// /},${gpu_index// /},${pid// /},${process_name// /},${gpu_memory// /},$ps_info_escaped"
+	# get GPU process information from nvidia-smi
+	nvidia_output=$(nvidia-smi --query-compute-apps=timestamp,index,pid,process_name,used_gpu_memory --format=csv,noheader 2>/dev/null || echo "")
+	
+	if [ -z "$nvidia_output" ]; then
+		exit 0  # if no processes, exit
+	fi
+	
+	echo "$nvidia_output" | while IFS=',' read -r timestamp gpu_index pid process_name gpu_memory; do
+		# triming values
+		timestamp=$(echo "$timestamp" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		gpu_index=$(echo "$gpu_index" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		pid=$(echo "$pid" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		process_name=$(echo "$process_name" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		gpu_memory=$(echo "$gpu_memory" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		
+		# check if pid is a number
+		if ! echo "$pid" | grep -q '^[0-9]\+$'; then
+			continue
+		fi
+		
+		# get process detailed information from ps command (ignore errors)
+		if ps_info=$(ps --noheader -o 'user,%mem,%cpu,command' -p "$pid" 2>/dev/null); then
+			# CSV escape processing
+			ps_info_escaped=$(echo "$ps_info" | sed -e 's/,/./g' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+			echo "$timestamp,$gpu_index,$pid,$process_name,$gpu_memory,$ps_info_escaped"
+		else
+			# if process not found, use default value
+			echo "$timestamp,$gpu_index,$pid,$process_name,$gpu_memory,unknown,0.0,0.0,$process_name"
 		fi
 	done`
 
@@ -224,7 +242,10 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GPU process information: %w", err)
+		if exitError, ok := err.(*exec.ExitError); ok {
+			return []types.GPUProcess{}, fmt.Errorf("process collection script failed with exit code %d: %s", exitError.ExitCode(), string(exitError.Stderr))
+		}
+		return []types.GPUProcess{}, fmt.Errorf("failed to execute process collection script: %w", err)
 	}
 
 	return c.parseProcesses(string(output))
@@ -232,7 +253,7 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 
 func (c *Collector) parseProcesses(output string) ([]types.GPUProcess, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) == 0 {
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		return []types.GPUProcess{}, nil
 	}
 
