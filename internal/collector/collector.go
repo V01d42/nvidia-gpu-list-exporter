@@ -203,21 +203,27 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout*2)
 	defer cancel()
 
+	// GPU UUIDからGPU IDへのマッピングを取得
+	gpuMapping, err := c.getGPUMapping(ctx)
+	if err != nil {
+		return []types.GPUProcess{}, fmt.Errorf("failed to get GPU mapping: %w", err)
+	}
+
 	// get detailed process information
 	script := `
 	set -euo pipefail
 	
 	# get GPU process information from nvidia-smi
-	nvidia_output=$(nvidia-smi --query-compute-apps=timestamp,index,pid,process_name,used_gpu_memory --format=csv,noheader 2>/dev/null || echo "")
+	nvidia_output=$(nvidia-smi --query-compute-apps=timestamp,gpu_uuid,pid,process_name,used_gpu_memory --format=csv,noheader 2>/dev/null || echo "")
 	
 	if [ -z "$nvidia_output" ]; then
 		exit 0  # if no processes, exit
 	fi
 	
-	echo "$nvidia_output" | while IFS=',' read -r timestamp gpu_index pid process_name gpu_memory; do
+	echo "$nvidia_output" | while IFS=',' read -r timestamp gpu_uuid pid process_name gpu_memory; do
 		# triming values
 		timestamp=$(echo "$timestamp" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-		gpu_index=$(echo "$gpu_index" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		gpu_uuid=$(echo "$gpu_uuid" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 		pid=$(echo "$pid" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 		process_name=$(echo "$process_name" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 		gpu_memory=$(echo "$gpu_memory" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -231,10 +237,10 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 		if ps_info=$(ps --noheader -o 'user,%mem,%cpu,command' -p "$pid" 2>/dev/null); then
 			# CSV escape processing
 			ps_info_escaped=$(echo "$ps_info" | sed -e 's/,/./g' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-			echo "$timestamp,$gpu_index,$pid,$process_name,$gpu_memory,$ps_info_escaped"
+			echo "$timestamp,$gpu_uuid,$pid,$process_name,$gpu_memory,$ps_info_escaped"
 		else
 			# if process not found, use default value
-			echo "$timestamp,$gpu_index,$pid,$process_name,$gpu_memory,unknown,0.0,0.0,$process_name"
+			echo "$timestamp,$gpu_uuid,$pid,$process_name,$gpu_memory,unknown,0.0,0.0,$process_name"
 		fi
 	done`
 
@@ -248,10 +254,49 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 		return []types.GPUProcess{}, fmt.Errorf("failed to execute process collection script: %w", err)
 	}
 
-	return c.parseProcesses(string(output))
+	return c.parseProcessesWithMapping(string(output), gpuMapping)
 }
 
-func (c *Collector) parseProcesses(output string) ([]types.GPUProcess, error) {
+// getGPUMapping gets the mapping from GPU UUID to GPU index.
+func (c *Collector) getGPUMapping(ctx context.Context) (map[string]int, error) {
+	cmd := exec.CommandContext(ctx, c.config.NvidiaSmiPath,
+		"--query-gpu=index,gpu_uuid",
+		"--format=csv,noheader,nounits")
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GPU mapping: %w", err)
+	}
+
+	mapping := make(map[string]int)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, ",")
+		if len(parts) != 2 {
+			continue
+		}
+
+		indexStr := strings.TrimSpace(parts[0])
+		uuid := strings.TrimSpace(parts[1])
+
+		index, err := strconv.Atoi(indexStr)
+		if err != nil {
+			continue
+		}
+
+		mapping[uuid] = index
+	}
+
+	return mapping, nil
+}
+
+// parseProcessesWithMapping parses process output with GPU UUID to ID mapping.
+func (c *Collector) parseProcessesWithMapping(output string, gpuMapping map[string]int) ([]types.GPUProcess, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		return []types.GPUProcess{}, nil
@@ -275,10 +320,11 @@ func (c *Collector) parseProcesses(output string) ([]types.GPUProcess, error) {
 			return nil, fmt.Errorf("line %d: failed to parse timestamp '%s': %w", lineNum+1, timestampStr, err)
 		}
 
-		gpuIDStr := strings.TrimSpace(fields[1])
-		gpuID, err := strconv.Atoi(gpuIDStr)
-		if err != nil {
-			return nil, fmt.Errorf("line %d: failed to parse GPU ID '%s': %w", lineNum+1, gpuIDStr, err)
+		gpuUUID := strings.TrimSpace(fields[1])
+		gpuID, exists := gpuMapping[gpuUUID]
+		if !exists {
+			// フォールバック：UUIDが見つからない場合は0を使用
+			gpuID = 0
 		}
 
 		pidStr := strings.TrimSpace(fields[2])
