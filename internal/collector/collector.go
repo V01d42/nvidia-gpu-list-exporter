@@ -235,9 +235,18 @@ func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 		
 		# get process detailed information from ps command (ignore errors)
 		if ps_info=$(ps --noheader -o 'user,%mem,%cpu,command' -p "$pid" 2>/dev/null); then
-			# CSV escape processing
-			ps_info_escaped=$(echo "$ps_info" | sed -e 's/,/./g' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-			echo "$timestamp,$gpu_uuid,$pid,$process_name,$gpu_memory,$ps_info_escaped"
+			# Parse ps output into 4 fields: user %mem %cpu command
+			# Use awk to properly split the ps output
+			user=$(echo "$ps_info" | awk '{print $1}')
+			mem_percent=$(echo "$ps_info" | awk '{print $2}')
+			cpu_percent=$(echo "$ps_info" | awk '{print $3}')
+			# Command is everything from field 4 onwards, joined with spaces
+			command=$(echo "$ps_info" | awk '{for(i=4;i<=NF;i++) printf "%s%s", $i, (i<NF?" ":""); print ""}')
+			
+			# CSV escape: replace commas with dots in command to avoid CSV issues
+			command_escaped=$(echo "$command" | sed 's/,/./g')
+			
+			echo "$timestamp,$gpu_uuid,$pid,$process_name,$gpu_memory,$user,$mem_percent,$cpu_percent,$command_escaped"
 		else
 			# if process not found, use default value
 			echo "$timestamp,$gpu_uuid,$pid,$process_name,$gpu_memory,unknown,0.0,0.0,$process_name"
