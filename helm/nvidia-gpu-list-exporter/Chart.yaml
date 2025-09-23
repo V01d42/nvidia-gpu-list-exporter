@@ -2,8 +2,8 @@ apiVersion: v2
 name: nvidia-gpu-list-exporter
 description: A Helm chart for NVIDIA GPU List Prometheus exporter
 type: application
-version: 1.8.1
-appVersion: 1.8.1
+version: 1.8.2
+appVersion: 1.8.2
 home: https://github.com/V01d42/nvidia-gpu-list-exporter
 sources:
   - https://github.com/V01d42/nvidia-gpu-list-exporter

@@ -16,7 +16,7 @@ port: 8080
 # Image configuration
 image:
   repository: ghcr.io/v01d42/nvidia-gpu-list-exporter
-  tag: "1.8.1"
+  tag: "1.8.2"
   pullPolicy: IfNotPresent
 
 # Image pull secrets
