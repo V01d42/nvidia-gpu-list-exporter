@@ -244,12 +244,6 @@ The exporter provides these Prometheus metrics:
 | `nvidia_gpu_process_memory_bytes` | Gauge | GPU process memory usage in bytes |
 | `nvidia_gpu_process_count` | Gauge | Number of GPU processes per GPU |
 
-### System Metrics
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `nvidia_system_image_info` | Gauge | System information (always 1) |
-
 ### Common Labels
 
 All metrics include these labels:

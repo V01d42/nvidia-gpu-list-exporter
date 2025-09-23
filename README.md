@@ -125,12 +125,6 @@ The exporter provides the following Prometheus metrics:
 | `nvidia_gpu_process_memory_bytes` | Gauge | GPU process memory usage in bytes |
 | `nvidia_gpu_process_count` | Gauge | Number of GPU processes |
 
-### System Metrics
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `nvidia_system_image_info` | Gauge | System image information (value is always 1) |
-
 ### Labels
 
 All metrics include the following labels:
@@ -269,8 +263,6 @@ nvidia_gpu_memory_used_bytes / 1024 / 1024 / 1024
 # Hot GPUs (temperature > 80°C)
 nvidia_gpu_temperature_celsius > 80
 
-# System information query
-nvidia_system_image_info
 ```
 
 ## Troubleshooting

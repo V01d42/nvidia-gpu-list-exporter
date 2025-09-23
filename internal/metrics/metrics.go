@@ -126,6 +126,13 @@ func (m *Metrics) Register(registry prometheus.Registerer) error {
 
 // UpdateGPU updates GPU metrics with the provided data.
 func (m *Metrics) UpdateGPU(gpuMetrics []types.GPUMetrics) {
+	m.gpuTemperature.Reset()
+	m.gpuFreeMemory.Reset()
+	m.gpuUsedMemory.Reset()
+	m.gpuTotalMemory.Reset()
+	m.gpuUtilization.Reset()
+	m.memoryUtilization.Reset()
+
 	for _, metric := range gpuMetrics {
 		labels := prometheus.Labels{
 			"hostname": metric.Hostname,
@@ -144,6 +151,10 @@ func (m *Metrics) UpdateGPU(gpuMetrics []types.GPUMetrics) {
 
 // UpdateProcesses updates GPU process metrics.
 func (m *Metrics) UpdateProcesses(processes []types.GPUProcess) {
+	m.processGPUMemory.Reset()
+	m.processCPU.Reset()
+	m.processMemory.Reset()
+
 	for _, process := range processes {
 		labels := prometheus.Labels{
 			"hostname":     process.Hostname,
