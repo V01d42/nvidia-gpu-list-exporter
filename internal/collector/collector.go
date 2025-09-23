@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	osuser "os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -199,28 +198,6 @@ func (c *Collector) parseUint64(s string) (uint64, error) {
 	return strconv.ParseUint(s, 10, 64)
 }
 
-func (c *Collector) normalizeUser(value string) (string, error) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return "", fmt.Errorf("user value is empty")
-	}
-
-	if _, err := strconv.Atoi(trimmed); err != nil {
-		return trimmed, nil
-	}
-
-	u, err := osuser.LookupId(trimmed)
-	if err != nil {
-		return trimmed, fmt.Errorf("lookup user id %s: %w", trimmed, err)
-	}
-
-	if u.Username == "" {
-		return trimmed, fmt.Errorf("lookup user id %s returned empty username", trimmed)
-	}
-
-	return u.Username, nil
-}
-
 // CollectProcesses collects GPU process information.
 func (c *Collector) CollectProcesses() ([]types.GPUProcess, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout*2)
@@ -375,14 +352,9 @@ func (c *Collector) parseProcessesWithMapping(output string, gpuMapping map[stri
 			return nil, fmt.Errorf("line %d: failed to parse GPU memory '%s': %w", lineNum+1, fields[4], err)
 		}
 
-		rawUser := strings.TrimSpace(fields[5])
-		if rawUser == "" {
+		uid := strings.TrimSpace(fields[5])
+		if uid == "" {
 			return nil, fmt.Errorf("line %d: empty user field", lineNum+1)
-		}
-
-		username, err := c.normalizeUser(rawUser)
-		if err != nil {
-			return nil, fmt.Errorf("line %d: %w", lineNum+1, err)
 		}
 
 		usedMemory, err := c.parseFloat(fields[6])
@@ -411,7 +383,7 @@ func (c *Collector) parseProcessesWithMapping(output string, gpuMapping map[stri
 			Hostname:      c.hostname,
 			GPUID:         gpuID,
 			Timestamp:     timestamp,
-			User:          username,
+			User:          uid,
 			PID:           pid,
 			ProcessName:   processName,
 			UsedGPUMemory: usedGPUMemory,
