@@ -5,6 +5,34 @@ entries:
       category: Monitoring
       licenses: Apache-2.0
     apiVersion: v2
+    appVersion: 1.8.2
+    created: "2025-09-23T19:13:33.578510881Z"
+    description: A Helm chart for NVIDIA GPU List Prometheus exporter
+    digest: 1699cb10d281a36bb4a033c88ae7f7f996c8e98253e2f86437726da8b3ab4595
+    home: https://github.com/V01d42/nvidia-gpu-list-exporter
+    keywords:
+    - nvidia
+    - gpu
+    - prometheus
+    - exporter
+    - monitoring
+    - metrics
+    - daemonset
+    - kubernetes
+    maintainers:
+    - name: V01d42
+      url: https://github.com/V01d42
+    name: nvidia-gpu-list-exporter
+    sources:
+    - https://github.com/V01d42/nvidia-gpu-list-exporter
+    type: application
+    urls:
+    - https://github.com/V01d42/nvidia-gpu-list-exporter/releases/download/nvidia-gpu-list-exporter-1.8.2/nvidia-gpu-list-exporter-1.8.2.tgz
+    version: 1.8.2
+  - annotations:
+      category: Monitoring
+      licenses: Apache-2.0
+    apiVersion: v2
     appVersion: 1.8.1
     created: "2025-09-23T17:50:42.005688403Z"
     description: A Helm chart for NVIDIA GPU List Prometheus exporter
@@ -365,4 +393,4 @@ entries:
     urls:
     - https://github.com/V01d42/nvidia-gpu-list-exporter/releases/download/nvidia-gpu-list-exporter-1.0.0/nvidia-gpu-list-exporter-1.0.0.tgz
     version: 1.0.0
-generated: "2025-09-23T17:50:42.005811104Z"
+generated: "2025-09-23T19:13:33.578637028Z"
