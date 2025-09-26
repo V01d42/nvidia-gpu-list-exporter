@@ -109,8 +109,16 @@ Generate environment variables for the exporter
 - name: HOSTNAME_OVERRIDE
   value: {{ .Values.exporter.hostnameOverride | quote }}
 {{- end }}
+{{- with .Values.nvidiaRuntime.visibleDevices }}
+- name: NVIDIA_VISIBLE_DEVICES
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.nvidiaRuntime.driverCapabilities }}
+- name: NVIDIA_DRIVER_CAPABILITIES
+  value: {{ . | quote }}
+{{- end }}
 {{- range .Values.env }}
 - name: {{ .name }}
   value: {{ .value | quote }}
 {{- end }}
-{{- end }} 
+{{- end }}

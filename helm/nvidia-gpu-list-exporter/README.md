@@ -134,6 +134,25 @@ helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter -f custom-value
 | `updateStrategy.type` | DaemonSet update strategy | `RollingUpdate` | string |
 | `hostNetwork` | Use host network | `false` | bool |
 | `hostPID` | Use host PID namespace | `false` | bool |
+| `nvidiaRuntime.runtimeClassName` | RuntimeClass name used for NVIDIA runtime | `nvidia` | string |
+| `nvidiaRuntime.visibleDevices` | Value passed to `NVIDIA_VISIBLE_DEVICES` | `all` | string |
+| `nvidiaRuntime.driverCapabilities` | Value passed to `NVIDIA_DRIVER_CAPABILITIES` | `utility` | string |
+
+## NVIDIA RuntimeClass Integration
+
+By default this chart sets the DaemonSet `runtimeClassName` to `nvidia` and configures
+`NVIDIA_VISIBLE_DEVICES` / `NVIDIA_DRIVER_CAPABILITIES` so that `nvidia-smi` works even
+when the container does not request GPU resources. If your cluster registers the runtime
+under a different name, override it at install time, for example:
+
+```bash
+helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter \
+  --set nvidiaRuntime.runtimeClassName=nvidia-cdi
+```
+
+Setting `nvidiaRuntime.runtimeClassName=""` (empty string) disables the field and skips
+the additional environment variables. Make sure the desired RuntimeClass exists beforehand
+(`kubectl get runtimeclass`), or create it via the NVIDIA Container Toolkit documentation.
 
 ## GPU Node Targeting
 
@@ -406,7 +425,3 @@ helm install nvidia-gpu-exporter ./helm/nvidia-gpu-list-exporter --dry-run
 # Lint chart
 helm lint ./helm/nvidia-gpu-list-exporter
 ```
-
-## License
-
-This chart is licensed under the Apache License 2.0. 

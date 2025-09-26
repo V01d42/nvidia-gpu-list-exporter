@@ -380,10 +380,6 @@ nvidia-gpu-list-exporter/
 - Add tests for new functionality
 - Update documentation as needed
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## Acknowledgments
 
 - NVIDIA for the `nvidia-smi` tool

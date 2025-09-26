@@ -76,6 +76,12 @@ exporter:
   # Hostname override (leave empty for auto-detection)
   hostnameOverride: ""
 
+# NVIDIA container runtime settings
+nvidiaRuntime:
+  runtimeClassName: nvidia
+  visibleDevices: all
+  driverCapabilities: utility
+
 # Resources
 resources:
   limits:

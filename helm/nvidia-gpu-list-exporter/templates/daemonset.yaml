@@ -31,6 +31,9 @@ spec:
       {{- with .Values.priorityClassName }}
       priorityClassName: {{ . }}
       {{- end }}
+      {{- with .Values.nvidiaRuntime.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
       hostNetwork: {{ .Values.hostNetwork }}
       hostPID: {{ .Values.hostPID }}
       containers:
